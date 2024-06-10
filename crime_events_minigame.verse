@@ -1,455 +1,227 @@
 
 using { /Fortnite.com/Devices }
-using { /Fortnite.com/Characters }
 using { /Verse.org/Simulation }
 using { /UnrealEngine.com/Temporary/Diagnostics }
 using { /Verse.org/Random }
 
-zombies_survival_minigame := class(creative_device):
+# See https://dev.epicgames.com/documentation/en-us/uefn/create-your-own-device-in-verse for how to create a verse device.
 
-    #----------------------------------------------------------------------------------------------------
+# A Verse-authored creative device that can be placed in a level
+crime_events_minigame := class(creative_device):
 
-    # I.     Wall Buy Weapons Devices
-    
-    # Buttons
+    # Notifies players when crime alert minigame has started
     @editable
-    shotgunButton: conditional_button_device = conditional_button_device{}
-    @editable
-    smgButton: conditional_button_device = conditional_button_device{}
-    @editable
-    zeusButton: conditional_button_device = conditional_button_device{}
-    @editable
+    messageDevice : hud_message_device = hud_message_device{}
 
-    # Granters
+    # Tracks the amount of time players have to complete crime alert minigame
     @editable
-    shotgunGranter: item_granter_device = item_granter_device{}
-    @editable
-    smgGranter: item_granter_device = item_granter_device{}
-    @editable
-    zeusGranter: item_granter_device = item_granter_device{}
+    crimeTimer : timer_device = timer_device{}
 
+    # Grants XP Award for completed crime alert minigames
     @editable
     xpGranter : accolades_device = accolades_device{}
 
-    #----------------------------------------------------------------------------------------------------
-
-    # II.    Vending Machine Perks Devices
-
-    # Double Tap perk devices
+    # Grants 20 gold as reward for completed crime alert minigames
     @editable
-    doubleTapButton: conditional_button_device = conditional_button_device{}
-    @editable
-    doubleTapDevice: damage_amplifier_powerup_device = damage_amplifier_powerup_device{}
-
-    # Stamin-Up perk devices
-    @editable
-    staminUpButton: conditional_button_device = conditional_button_device{}
-    @editable
-    staminUpDevice: movement_modulator_device = movement_modulator_device{}
-
-    #----------------------------------------------------------------------------------------------------
-
-    # III.   Mystery Box Devices
-    @editable
-    weaponSpawner: item_spawner_device = item_spawner_device{}
-    @editable
-    mysteryBoxButton: conditional_button_device = conditional_button_device{}   
-
-    #----------------------------------------------------------------------------------------------------
-
-    # IV.    Zombies Minigame Devices
-    @editable
-    zombiesZone: mutator_zone_device = mutator_zone_device{}
-    @editable
-    zombiesMinigameMessages: hud_message_device = hud_message_device{}
-    @editable
-    goldGranter: item_granter_device = item_granter_device{}
-    @editable
-    goldGranterForNuke: item_granter_device = item_granter_device{}
+    goldGranter : item_granter_device = item_granter_device{}
     
+    # Grants 1 gold for each guard eliminated
     @editable
-    zombiesFiend: creature_spawner_device = creature_spawner_device{}
-    @editable
-    zombiesRanged: creature_spawner_device = creature_spawner_device{}
-    @editable
-    zombiesPoison: creature_spawner_device = creature_spawner_device{}
-    @editable
-    zombiesMega: creature_spawner_device = creature_spawner_device{}
+    goldGranterForGuardElim : item_granter_device = item_granter_device{}
 
-    #----------------------------------------------------------------------------------------------------
+    # Granters that hold items to be rewarded for completed crime alert minigames
+    @editable
+    granter1 : item_granter_device = item_granter_device{}
+    @editable
+    granter2 : item_granter_device = item_granter_device{}
+    @editable
+    granter3 : item_granter_device = item_granter_device{}
 
-    # V.     Devices Controller Script
+    # Guards are spawned at crime spots to be defeated for crime alert minigame
+    @editable
+    crimeSpot1 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot2 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot3 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot4 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot5 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot6 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot7 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    crimeSpot8 : guard_spawner_device = guard_spawner_device{}
 
+    # Number of crime spots
+    var NCrimeSpots : int = 8
+
+    # Max number of guards
+    var MaxGuards : int = 8
+
+    # Number of remaining guards
+    var NGuardsRemaining : int = -1
+
+    # Index of active crime spot
+    var RandomCrimeIndex : int = -1
+
+    # Amount of time between crime alert minigames in minutes (5 minutes / 1 minute for testing)
+    var StandByMinutes : float = 5.0
+
+    # Amount of time to display messages
+    var CrimeAlertMessageDuration : float = 0.0
+    var CrimeEndedMessageDuration : float = 5.0
+
+    # Crime alert messages
+    CrimeAlertType1Message<localizes>: message = "Crime reported near a landing zone"
+    CrimeAlertType2Message<localizes>: message = "Crime reported from a residence"
+    CrimeAlertType3Message<localizes>: message = "Crime reported in the city"
+
+    # Crime alert minigame completed messages
+    CrimeAlertSuccessMessage<localizes>: message = "Mission Completed"
+    CrimeAlertFailedMessage<localizes>: message = "Mission Failed"
+
+    # Runs when the device is started in a running game
     OnBegin<override>()<suspends>:void=
-        initDevices()
+        InitGuards()
+        crimeTimer.SuccessEvent.Subscribe(OnTimerCompleted)
+        spawn:
+            StartCrimeAlertRound()
 
-    initDevices():void=
-        initWallBuys()
-        initPerks()
-        initMysteryBox()
-        initZombies()
+    # Init all guard spawners to listen for when guards are eliminated
+    InitGuards() : void=
+        set NGuardsRemaining = MaxGuards
+        crimeSpot1.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot2.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot3.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot4.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot5.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot6.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot7.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpot8.EliminatedEvent.Subscribe(OnGuardEliminated)
 
-    initWallBuys():void=
-        shotgunButton.ActivatedEvent.Subscribe(grantShotgun)
-        smgButton.ActivatedEvent.Subscribe(grantSmg)
-        zeusButton.ActivatedEvent.Subscribe(grantZeus)
-    
-    grantShotgun(Agent: agent):void=
-        shotgunGranter.GrantItem(Agent)
-    
-    grantSmg(Agent: agent):void=
-        smgGranter.GrantItem(Agent)
-    
-    grantZeus(Agent: agent):void=
-        zeusGranter.GrantItem(Agent)
-
-    initPerks():void=
-        doubleTapButton.ActivatedEvent.Subscribe(grantDoubleTap)
-        staminUpButton.ActivatedEvent.Subscribe(grantStaminUp)
-
-    grantDoubleTap(Agent: agent):void=
-        doubleTapDevice.Pickup(Agent)
-
-    grantStaminUp(Agent: agent):void=
-        staminUpDevice.Activate(Agent)
-
-    initMysteryBox():void=
-        mysteryBoxButton.ActivatedEvent.Subscribe(spinMysteryBox)
-
-    spinMysteryBox(Agent: agent):void=
-        mysteryBoxButton.Disable()
-        set nCyclesRemaining = N_CYCLES
-        spawn{cycleNextWeapon()}
-
-    cycleNextWeapon()<suspends>:void=
-        if(nCyclesRemaining > 0):
-            weaponSpawner.CycleToNextItem()
-            Sleep(CYCLE_DELAY)
-            set nCyclesRemaining -= 1
-            cycleNextWeapon()
-        else:
-            mysteryBoxButton.Enable()
-            
-
-    #----------------------------------------------------------------------------------------------------
-
-    # VI.    Zombies Minigame Script
-
-    initZombies():void=
-        zombiesFiend.EliminatedEvent.Subscribe(zombieEliminated)
-        zombiesRanged.EliminatedEvent.Subscribe(zombieEliminated)
-        zombiesPoison.EliminatedEvent.Subscribe(zombieEliminated)
-        zombiesMega.EliminatedEvent.Subscribe(zombieEliminated)
-        zombiesZone.AgentEntersEvent.Subscribe(addPlayerToZone)
-        zombiesZone.AgentExitsEvent.Subscribe(removePlayerFromZone)
-
-    getMultiplier():int=
-        if(currentRound < 6):
-            return 0
-        else if(currentRound < 11):
-            return 1
-        else if(currentRound < 16):
-            return 2
-        else if(currentRound < 20):
-            return 3
-        else:
-            return 4
-
-    awardZombieElimGold(Agent: agent):void=
-        roundMultiplier: int = getMultiplier()
-        for(Index := 0..roundMultiplier):
-            goldGranter.GrantItem(Agent)
-
-
-    zombieEliminated(Result: device_ai_interaction_result):void=
-        if(roundIsActive = true):
-            if(Agent := Result.Source?):
-                if(Player := player[Agent]):
-                    awardZombieElimGold(Agent)
-                    if(doublePointsActive = true):
-                        awardZombieElimGold(Agent)
-
-                    if(currentRound < 20):
-                        set nZombiesRemaining -= 1
-                        if(nZombiesRemaining = 0):
-                            set roundIsActive = false
-                            xpGranter.Award(Agent)
-                            spawn{initNextRound(true)}
-                        else if(nZombiesRemaining > 0):
-                            rollZombiesChanceEvent()
-
-    chanceEventRolled():logic=
-        randomChanceIndex: int = GetRandomInt(1, N_ZOMBIES_FOR_CHANCE)
-        if(randomChanceIndex = 1):
-            return true
-        else:
-            return false
-
-    rollZombiesChanceEvent():void=
-        var chanceEventActivated: logic = chanceEventRolled()
-        if(chanceEventActivated = true):
-            var chanceEventIndex: int = GetRandomInt(1, MAX_CHANCE_INDEX)
-            if(chanceEventIndex < MAX_CHANCE_INDEX):
-                activateChanceEvent1()
+    # Tracks when all guards have been eliminated
+    OnGuardEliminated(Result : device_ai_interaction_result) : void=
+        set NGuardsRemaining -= 1
+        if(Agent := Result.Source?):
+            if(NGuardsRemaining = 0):
+                RewardPlayer(Agent)
+                crimeTimer.Complete()
             else:
-                activateChanceEvent2()
-    
-    activateChanceEvent1():void=
-        displayMessage(zombiesDoublePointsMessage, 0.0)
-        set doublePointsActive = true
+                goldGranterForGuardElim.GrantItem(Agent)
 
-    activateChanceEvent2():void= 
-        displayMessage(zombiesNukedMessage, 0.0)
-        awardNukeGoldToPlayers()
-        set roundIsActive = false
-        spawn{initNextRound(false)}
-
-    awardNukeGoldToPlayers():void=
-        for(Index := 0..zombiesList.Length-1):
-            if(zPlayer := zombiesList[Index]):
-                goldGranterForNuke.GrantItem(zPlayer)
-                if(doublePointsActive = true):
-                    goldGranterForNuke.GrantItem(zPlayer)
-
-    searchZombiesList(Agent: agent):logic=
-        for(Index := 0..zombiesList.Length-1):
-            if(zPlayer := zombiesList[Index]):
-                if(zPlayer = Agent):
-                    return true
-        return false
-
-    addPlayerToZone(Agent: agent):void=
-        if(Player := player[Agent]):
-            if(nPlayersInZone = 0):
-                set nPlayersInZone += 1
-                startZombiesMinigame()
-            else:
-                set nPlayersInZone += 1
-            addPlayerToArray(Agent)
-
-    addPlayerToArray(Agent: agent):void=
-        var playerInZombiesList: logic = searchZombiesList(Agent)
-
-        if(playerInZombiesList = false):
-            set zombiesList = zombiesList + array{Agent}
-
-    removePlayerFromZone(Agent: agent):void=
-        if(Player := player[Agent]):
-            set nPlayersInZone -= 1
-            if(nPlayersInZone = 0):
-                endZombiesMinigame()
-            removePlayerFromArray(Agent)
-        
-    removePlayerFromArray(Agent: agent):void=
-        var playerInZombiesList: logic = searchZombiesList(Agent)
-
-        if(playerInZombiesList = true):
-            removePlayerFromList(Agent)
-    
-    removePlayerFromList(Agent: agent):void=
-        var newList : []agent = array{}
-        for(Index := 0..zombiesList.Length-1):
-            if(zPlayer := zombiesList[Index]):
-                var playerToRemoveFound : logic = false
-                if(zPlayer = Agent):
-                    set playerToRemoveFound = true
-                if(playerToRemoveFound = false):
-                    set newList = newList + array{zPlayer}
-        set zombiesList = newList
-
-    enableZombies():void=
-        set roundIsActive = true
-        if(currentRound < 4):
-            zombiesFiend.Enable()
-            set zombiesFiendActive = true
-        else if(currentRound < 7):
-            zombiesFiend.Enable()
-            zombiesPoison.Enable()
-            set zombiesFiendActive = true
-            set zombiesPoisonActive = true
-        else if(currentRound < 10):
-            zombiesFiend.Enable()
-            zombiesRanged.Enable()
-            set zombiesFiendActive = true
-            set zombiesRangedActive = true
-        else if(currentRound < 13):
-            zombiesRanged.Enable()
-            zombiesPoison.Enable()
-            set zombiesRangedActive = true
-            set zombiesPoisonActive = true
-        else if(currentRound < 16):
-            zombiesFiend.Enable()
-            zombiesRanged.Enable()
-            zombiesPoison.Enable()
-            set zombiesFiendActive = true
-            set zombiesRangedActive = true
-            set zombiesPoisonActive = true
-        else if(currentRound < 19):
-            zombiesFiend.Enable()
-            zombiesMega.Enable()
-            set zombiesFiendActive = true
-            set zombiesMegaActive = true
+    # Reward players with xp, gold, & appropriate item
+    RewardPlayer(Agent : agent) : void=
+        if(RandomCrimeIndex < 3):
+            granter1.GrantItem(Agent)
+        else if(RandomCrimeIndex < 5):
+            granter2.GrantItem(Agent)
+        else if(RandomCrimeIndex < 7):
+            granter3.GrantItem(Agent)
         else:
-            zombiesRanged.Enable()
-            zombiesPoison.Enable()
-            zombiesMega.Enable()
-            set zombiesRangedActive = true
-            set zombiesPoisonActive = true
-            set zombiesMegaActive = true
+            granter2.GrantItem(Agent)
+        goldGranter.GrantItem(Agent)
+        xpGranter.Award(Agent)
 
-    disableZombies():void=
-        set doublePointsActive = false
-        if(zombiesFiendActive = true):
-            zombiesFiend.EliminateCreatures()
-            zombiesFiend.Disable()
-            set zombiesFiendActive = false
-        if(zombiesRangedActive = true):
-            zombiesRanged.EliminateCreatures()
-            zombiesRanged.Disable()
-            set zombiesRangedActive = false
-        if(zombiesPoisonActive = true):
-            zombiesPoison.EliminateCreatures()
-            zombiesPoison.Disable()
-            set zombiesPoisonActive = false
-        if(zombiesMegaActive = true):
-            zombiesMega.EliminateCreatures()
-            zombiesMega.Disable()
-            set zombiesMegaActive = false
+    # Init timer to reset crime alert round when completed
+    OnTimerCompleted(Agent : ?agent) : void=
+        DisplayCrimeEndedMessage()
+        ResetCrimeAlertRound()
+
+    # Notifies player whether mission was completed or failed
+    DisplayCrimeEndedMessage() : void=
+        if(NGuardsRemaining = 0):
+            messageDevice.SetText(CrimeAlertSuccessMessage)
+        else:
+            messageDevice.SetText(CrimeAlertFailedMessage)
+        messageDevice.SetDisplayTime(CrimeEndedMessageDuration)
+        messageDevice.Show()
+
+    # Converts minutes to seconds
+    MinutesToSeconds(Minutes : float) : float=
+        return 60 * Minutes
+
+    # Delays crime alert minigame for a number of minutes
+    StandBy()<suspends> : void=
+        Sleep(MinutesToSeconds(StandByMinutes))
+
+    # Each crime alert minigame starts after a delay
+    StartCrimeAlertRound()<suspends> : void=
+        StandBy()
+        StartCrimeAlert()
+
+    # Crime event of some bots starts at random crime spot
+    StartCrimeAlert() : void=
+        set RandomCrimeIndex = GetRandomInt(1, NCrimeSpots)
+        DisplayCrimeAlertMessage()
+        SpawnGuards()
+        crimeTimer.Start()
+
+    # Notifies player of crime alert minigame & type of crime
+    DisplayCrimeAlertMessage() : void=
+        if(RandomCrimeIndex < 3):
+            messageDevice.SetText(CrimeAlertType1Message)
+        else if(RandomCrimeIndex < 5):
+            messageDevice.SetText(CrimeAlertType2Message)
+        else if(RandomCrimeIndex < 7):
+            messageDevice.SetText(CrimeAlertType3Message)
+        else:
+            messageDevice.SetText(CrimeAlertType2Message)
+        messageDevice.SetDisplayTime(CrimeAlertMessageDuration)
+        messageDevice.Show()
     
-    startZombiesMinigame():void=
-        set currentRound = 1
-        set nZombiesForRound = BASE_N_ZOMBIES
-        set nZombiesRemaining = nZombiesForRound
-        displayZombiesNextRoundMessage()
-        enableZombies()
+    # Spawns guards at one of the crime spots for players to defeat
+    SpawnGuards() : void=
+        if(RandomCrimeIndex = 1):
+            crimeSpot1.Enable()
+        else if(RandomCrimeIndex = 2):
+            crimeSpot2.Enable()
+        else if(RandomCrimeIndex = 3):
+            crimeSpot3.Enable()
+        else if(RandomCrimeIndex = 4):
+            crimeSpot4.Enable()
+        else if(RandomCrimeIndex = 5):
+            crimeSpot5.Enable()
+        else if(RandomCrimeIndex = 6):
+            crimeSpot6.Enable()
+        else if(RandomCrimeIndex = 7):
+            crimeSpot7.Enable()
+        else:
+            crimeSpot8.Enable()
 
-    initNextRound(displayRoundEndMessage: logic)<suspends>:void=
-        disableZombies()
-        if(displayRoundEndMessage = true):
-            displayMessage(zombiesRoundEndMessage, 0.0)
-        Sleep(ZOMBIES_NEXT_ROUND_DURATION)
+    # Resets all devices and starts over crime alert round
+    ResetCrimeAlertRound() : void=
+        crimeTimer.Reset()
+        ResetGuards()
+        spawn:
+            StartCrimeAlertRound()
 
-        if(nPlayersInZone > 0):
-            set currentRound += 1
-            set nZombiesForRound += N_ZOMBIES_TO_ADD
-            set nZombiesRemaining = nZombiesForRound
-
-            displayZombiesNextRoundMessage()
-            enableZombies()
-
-    endZombiesMinigame():void=
-        set roundIsActive = false
-        disableZombies()
-        displayMessage(zombiesEndMessage, ZOMBIES_ENDED_DURATION)
-
-    displayMessage(zMessage: message, displayTime: float):void=
-        zombiesMinigameMessages.SetText(zMessage)
-        zombiesMinigameMessages.SetDisplayTime(displayTime)
-        zombiesMinigameMessages.Show()
-
-    displayZombiesNextRoundMessage():void=
-        setMessageTextToRoundNumber()
-        zombiesMinigameMessages.SetDisplayTime(0.0)
-        zombiesMinigameMessages.Show()
-
-    #----------------------------------------------------------------------------------------------------
-
-    # VII.   Zombies minigame variables
-
-    # Instance variables
-    var nCyclesRemaining: int = 0
-    var nPlayersInZone: int = 0
-    var currentRound: int = 1
-    var nZombiesForRound: int = 0
-    var nZombiesRemaining: int = 0
-    var roundIsActive: logic = false
-    var doublePointsActive: logic = false
-
-    var zombiesFiendActive: logic = false
-    var zombiesRangedActive: logic = false
-    var zombiesPoisonActive: logic = false
-    var zombiesMegaActive: logic = false
-
-    var zombiesList : []agent = array{}
-
-    # Constants
-    CYCLE_DELAY: float = 0.25
-    FFA_CYCLE_DELAY: float = 5.0
-    N_CYCLES: int = 20
-    MAX_ROUNDS: int = 20
-    ZOMBIES_ENDED_DURATION : float = 5.0
-    BASE_N_ZOMBIES: int = 20
-    N_ZOMBIES_TO_ADD: int = 2
-    ZOMBIES_NEXT_ROUND_DURATION: float = 20.0
-    N_ZOMBIES_FOR_CHANCE: int = 100
-    MAX_CHANCE_INDEX: int = 4
-
-    # Messages
-    zombiesMinigameMessage1<localizes>: message = "Eliminate the Zombies (Round 1)"
-    zombiesMinigameMessage2<localizes>: message = "Eliminate the Zombies (Round 2)"
-    zombiesMinigameMessage3<localizes>: message = "Eliminate the Zombies (Round 3)"
-    zombiesMinigameMessage4<localizes>: message = "Eliminate the Zombies (Round 4)"
-    zombiesMinigameMessage5<localizes>: message = "Eliminate the Zombies (Round 5)"
-    zombiesMinigameMessage6<localizes>: message = "Eliminate the Zombies (Round 6)"
-    zombiesMinigameMessage7<localizes>: message = "Eliminate the Zombies (Round 7)"
-    zombiesMinigameMessage8<localizes>: message = "Eliminate the Zombies (Round 8)"
-    zombiesMinigameMessage9<localizes>: message = "Eliminate the Zombies (Round 9)"
-    zombiesMinigameMessage10<localizes>: message = "Eliminate the Zombies (Round 10)"
-    zombiesMinigameMessage11<localizes>: message = "Eliminate the Zombies (Round 11)"
-    zombiesMinigameMessage12<localizes>: message = "Eliminate the Zombies (Round 12)"
-    zombiesMinigameMessage13<localizes>: message = "Eliminate the Zombies (Round 13)"
-    zombiesMinigameMessage14<localizes>: message = "Eliminate the Zombies (Round 14)"
-    zombiesMinigameMessage15<localizes>: message = "Eliminate the Zombies (Round 15)"
-    zombiesMinigameMessage16<localizes>: message = "Eliminate the Zombies (Round 16)"
-    zombiesMinigameMessage17<localizes>: message = "Eliminate the Zombies (Round 17)"
-    zombiesMinigameMessage18<localizes>: message = "Eliminate the Zombies (Round 18)"
-    zombiesMinigameMessage19<localizes>: message = "Eliminate the Zombies (Round 19)"
-    zombiesMinigameMessage20<localizes>: message = "Eliminate the Zombies (Round 20)"
-
-    zombiesRoundEndMessage<localizes>: message = "Zombies Round Completed (Next round starting soon)"
-    zombiesEndMessage<localizes>: message = "Zombies Event has Ended"
-    zombiesDoublePointsMessage<localizes>: message = "Double Points is Active (Zombies Event)"
-    zombiesInstaElimMessage<localizes>: message = "Insta Elim is active (Zombies Event)"
-    zombiesNukedMessage<localizes>: message = "Zombies have been Nuked (Next round starting soon)"
-
-    setMessageTextToRoundNumber():void=
-        if(currentRound = 1):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage1)
-        else if(currentRound = 2):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage2)
-        else if(currentRound = 3):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage3)
-        else if(currentRound = 4):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage4)
-        else if(currentRound = 5):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage5)
-        else if(currentRound = 6):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage6)
-        else if(currentRound = 7):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage7)
-        else if(currentRound = 8):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage8)
-        else if(currentRound = 9):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage9)
-        else if(currentRound = 10):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage10)
-        else if(currentRound = 11):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage11)
-        else if(currentRound = 12):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage12)
-        else if(currentRound = 13):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage13)
-        else if(currentRound = 14):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage14)
-        else if(currentRound = 15):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage15)
-        else if(currentRound = 16):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage16)
-        else if(currentRound = 17):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage17)
-        else if(currentRound = 18):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage18)
-        else if(currentRound = 19):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage19)
-        else if(currentRound = 20):
-            zombiesMinigameMessages.SetText(zombiesMinigameMessage20)
+    # Despawns guards & resets the appropriate guard spawner
+    ResetGuards() : void=
+        set NGuardsRemaining = MaxGuards
+        if(RandomCrimeIndex = 1):
+            crimeSpot1.Disable()
+            crimeSpot1.Reset()
+        else if(RandomCrimeIndex = 2):
+            crimeSpot2.Disable()
+            crimeSpot2.Reset()
+        else if(RandomCrimeIndex = 3):
+            crimeSpot3.Disable()
+            crimeSpot3.Reset()
+        else if(RandomCrimeIndex = 4):
+            crimeSpot4.Disable()
+            crimeSpot4.Reset()
+        else if(RandomCrimeIndex = 5):
+            crimeSpot5.Disable()
+            crimeSpot5.Reset()
+        else if(RandomCrimeIndex = 6):
+            crimeSpot6.Disable()
+            crimeSpot6.Reset()
+        else if(RandomCrimeIndex = 7):
+            crimeSpot7.Disable()
+            crimeSpot7.Reset()
+        else:
+            crimeSpot8.Disable()
+            crimeSpot8.Reset()
