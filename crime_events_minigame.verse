@@ -89,6 +89,7 @@ crime_events_minigame := class(creative_device):
         crimeTimer.SuccessEvent.Subscribe(OnTimerCompleted)
         spawn:
             StartCrimeAlertRound()
+        InitNPCBattleSimulation()
 
     # Init all guard spawners to listen for when guards are eliminated
     InitGuards() : void=
@@ -106,11 +107,12 @@ crime_events_minigame := class(creative_device):
     OnGuardEliminated(Result : device_ai_interaction_result) : void=
         set NGuardsRemaining -= 1
         if(Agent := Result.Source?):
-            if(NGuardsRemaining = 0):
-                RewardPlayer(Agent)
-                crimeTimer.Complete()
-            else:
+            if(NGuardsRemaining > 0):
                 goldGranterForGuardElim.GrantItem(Agent)
+        if(NGuardsRemaining = 0):
+            crimeTimer.Complete()
+            if(Agent := Result.Source?):
+                RewardPlayer(Agent)
 
     # Reward players with xp, gold, & appropriate item
     RewardPlayer(Agent : agent) : void=
@@ -225,3 +227,83 @@ crime_events_minigame := class(creative_device):
         else:
             crimeSpot8.Disable()
             crimeSpot8.Reset()
+
+    # NPC Battle Simulation Script
+
+    # guard spawners
+    @editable
+    battleNPCs1 : guard_spawner_device = guard_spawner_device{}
+    @editable
+    battleNPCs2 : guard_spawner_device = guard_spawner_device{}
+
+    # start battle button
+    @editable
+    startBattleButton : button_device = button_device{}
+
+    # npcs remaining
+    var Team1NPCsRemaining : int = -1
+    var Team2NPCsRemaining : int = -1
+
+    # max npcs
+    MaxNPCs : int = 50
+
+    # simulation messages
+    battleStartedMessage<localizes>: message = "NPC Battle Simulation has started"
+    npcTeam1WinsMessage<localizes>: message = "Team 1 NPCs have won the battle"
+    npcTeam2WinsMessage<localizes>: message = "Team 2 NPCs have won the battle"
+
+    InitNPCBattleSimulation() : void=
+        InitBattleNPCs()
+        startBattleButton.InteractedWithEvent.Subscribe(startBattleButtonPressed)
+
+    InitBattleNPCs() : void=
+        set Team1NPCsRemaining = MaxNPCs
+        set Team2NPCsRemaining = MaxNPCs
+        battleNPCs1.EliminatedEvent.Subscribe(OnTeam1NPCEliminated)
+        battleNPCs2.EliminatedEvent.Subscribe(OnTeam2NPCEliminated)
+    
+    startBattleButtonPressed(Agent : agent) : void=
+        DisplayBattleStartedMessage()
+        startBattleButton.Disable()
+        spawnBattleNPCs()
+    
+    DisplayBattleStartedMessage() : void=
+        messageDevice.SetText(battleStartedMessage)
+        messageDevice.SetDisplayTime(CrimeAlertMessageDuration)
+        messageDevice.Show()
+
+    spawnBattleNPCs() : void=
+        battleNPCs1.Enable()
+        battleNPCs2.Enable()
+
+    OnTeam1NPCEliminated(Result : device_ai_interaction_result) : void=
+        set Team1NPCsRemaining -= 1
+        if(Agent := Result.Source?):
+            goldGranterForGuardElim.GrantItem(Agent)
+        if(Team1NPCsRemaining = 0):
+            EndSimulation()
+
+    OnTeam2NPCEliminated(Result : device_ai_interaction_result) : void=
+        set Team2NPCsRemaining -= 1
+        if(Agent := Result.Source?):
+            goldGranterForGuardElim.GrantItem(Agent)
+        if(Team2NPCsRemaining = 0):
+            EndSimulation()
+
+    EndSimulation() : void=
+        DisplaySimulationEndedMessage()
+        set Team1NPCsRemaining = MaxNPCs
+        set Team2NPCsRemaining = MaxNPCs
+        battleNPCs1.Disable()
+        battleNPCs2.Disable()
+        battleNPCs1.Reset()
+        battleNPCs2.Reset()
+        startBattleButton.Enable()
+
+    DisplaySimulationEndedMessage() : void=
+        if(Team1NPCsRemaining > 0):
+            messageDevice.SetText(npcTeam1WinsMessage)
+        else:
+            messageDevice.SetText(npcTeam2WinsMessage)
+        messageDevice.SetDisplayTime(CrimeEndedMessageDuration)
+        messageDevice.Show()
