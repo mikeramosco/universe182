@@ -21,7 +21,7 @@ crime_events_minigame := class(creative_device):
     @editable
     xpGranter : accolades_device = accolades_device{}
 
-    # Grants 20 gold as reward for completed crime alert minigames
+    # Grants 50 gold as reward for completed crime alert minigames
     @editable
     goldGranter : item_granter_device = item_granter_device{}
     
@@ -51,12 +51,27 @@ crime_events_minigame := class(creative_device):
     @editable
     crimeSpot6 : guard_spawner_device = guard_spawner_device{}
     @editable
-    crimeSpot7 : guard_spawner_device = guard_spawner_device{}
+    crimeSpotBank : guard_spawner_device = guard_spawner_device{}
+
     @editable
-    crimeSpot8 : guard_spawner_device = guard_spawner_device{}
+    ctbl1 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl2 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl3 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl4 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl5 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl6 : collectible_object_device = collectible_object_device{}
+    @editable
+    ctbl7 : collectible_object_device = collectible_object_device{}
+
+    var IsBankCrime : logic = false
 
     # Number of crime spots
-    var NCrimeSpots : int = 8
+    var NCrimeSpots : int = 6
 
     # Max number of guards
     var MaxGuards : int = 8
@@ -78,14 +93,17 @@ crime_events_minigame := class(creative_device):
     CrimeAlertType1Message<localizes>: message = "Crime reported near a landing zone"
     CrimeAlertType2Message<localizes>: message = "Crime reported from a residence"
     CrimeAlertType3Message<localizes>: message = "Crime reported in the city"
-
+    CrimeAlertType4Message<localizes>: message = "Crime reported at the bank"
+    
     # Crime alert minigame completed messages
     CrimeAlertSuccessMessage<localizes>: message = "Mission Completed"
     CrimeAlertFailedMessage<localizes>: message = "Mission Failed"
+    CrimeAlertEndedMessage<localizes>: message = "Mission Ended"
 
     # Runs when the device is started in a running game
     OnBegin<override>()<suspends>:void=
         InitGuards()
+        InitCollectibles()
         crimeTimer.SuccessEvent.Subscribe(OnTimerCompleted)
         spawn:
             StartCrimeAlertRound()
@@ -100,8 +118,20 @@ crime_events_minigame := class(creative_device):
         crimeSpot4.EliminatedEvent.Subscribe(OnGuardEliminated)
         crimeSpot5.EliminatedEvent.Subscribe(OnGuardEliminated)
         crimeSpot6.EliminatedEvent.Subscribe(OnGuardEliminated)
-        crimeSpot7.EliminatedEvent.Subscribe(OnGuardEliminated)
-        crimeSpot8.EliminatedEvent.Subscribe(OnGuardEliminated)
+        crimeSpotBank.EliminatedEvent.Subscribe(OnBankGuardEliminated)
+
+    InitCollectibles() : void=
+        ctbl1.CollectedEvent.Subscribe(OnCollected)
+        ctbl2.CollectedEvent.Subscribe(OnCollected)
+        ctbl3.CollectedEvent.Subscribe(OnCollected)
+        ctbl4.CollectedEvent.Subscribe(OnCollected)
+        ctbl5.CollectedEvent.Subscribe(OnCollected)
+        ctbl6.CollectedEvent.Subscribe(OnCollected)
+        ctbl7.CollectedEvent.Subscribe(OnCollected)
+
+    OnCollected(Agent : agent) : void=
+        goldGranter.GrantItem(Agent)
+        goldGranter.GrantItem(Agent)
 
     # Tracks when all guards have been eliminated
     OnGuardEliminated(Result : device_ai_interaction_result) : void=
@@ -113,6 +143,16 @@ crime_events_minigame := class(creative_device):
             crimeTimer.Complete()
             if(Agent := Result.Source?):
                 RewardPlayer(Agent)
+
+    OnBankGuardEliminated(Result : device_ai_interaction_result) : void=
+        set NGuardsRemaining -= 1
+        if(Agent := Result.Source?):
+            if(NGuardsRemaining > 0):
+                goldGranterForGuardElim.GrantItem(Agent)
+        if(NGuardsRemaining = 0):
+            if(Agent := Result.Source?):
+                goldGranter.GrantItem(Agent)
+                xpGranter.Award(Agent)
 
     # Reward players with xp, gold, & appropriate item
     RewardPlayer(Agent : agent) : void=
@@ -134,7 +174,9 @@ crime_events_minigame := class(creative_device):
 
     # Notifies player whether mission was completed or failed
     DisplayCrimeEndedMessage() : void=
-        if(NGuardsRemaining = 0):
+        if(IsBankCrime = true):
+            messageDevice.SetText(CrimeAlertSuccessMessage)
+        else if(NGuardsRemaining = 0):
             messageDevice.SetText(CrimeAlertSuccessMessage)
         else:
             messageDevice.SetText(CrimeAlertFailedMessage)
@@ -152,7 +194,42 @@ crime_events_minigame := class(creative_device):
     # Each crime alert minigame starts after a delay
     StartCrimeAlertRound()<suspends> : void=
         StandBy()
-        StartCrimeAlert()
+        BankCrimeChanceIndex : int = GetRandomInt(1, 4)
+        if(BankCrimeChanceIndex = 1):
+            set IsBankCrime = true
+            StartBankCrimeAlert()
+        else: 
+            set IsBankCrime = false
+            StartCrimeAlert()
+
+    SpawnCollectibles() : void=
+        RespawnCollectibles()
+        ShowThreeRandomCollectibles()
+
+    RespawnCollectibles() : void=
+        ctbl1.RespawnForAll()
+        ctbl2.RespawnForAll()
+        ctbl3.RespawnForAll()
+        ctbl4.RespawnForAll()
+        ctbl5.RespawnForAll()
+        ctbl6.RespawnForAll()
+        ctbl7.RespawnForAll()
+
+    ShowThreeRandomCollectibles() : void=
+        Collectibles : []collectible_object_device = array{ctbl1, ctbl2, ctbl3, ctbl4, ctbl5, ctbl6, ctbl7}
+        RandomLocations : []collectible_object_device = Shuffle(Collectibles)
+        if(RndmCtbl := RandomLocations[1]):
+            RndmCtbl.Show()
+        if(RndmCtbl := RandomLocations[2]):
+            RndmCtbl.Show()
+        if(RndmCtbl := RandomLocations[3]):
+            RndmCtbl.Show()
+
+    StartBankCrimeAlert() : void=
+        DisplayBankCrimeAlertMessage()
+        SpawnCollectibles()
+        crimeSpotBank.Enable()
+        crimeTimer.Start()
 
     # Crime event of some bots starts at random crime spot
     StartCrimeAlert() : void=
@@ -160,6 +237,11 @@ crime_events_minigame := class(creative_device):
         DisplayCrimeAlertMessage()
         SpawnGuards()
         crimeTimer.Start()
+
+    DisplayBankCrimeAlertMessage() : void=
+        messageDevice.SetText(CrimeAlertType4Message)
+        messageDevice.SetDisplayTime(CrimeAlertMessageDuration)
+        messageDevice.Show()
 
     # Notifies player of crime alert minigame & type of crime
     DisplayCrimeAlertMessage() : void=
@@ -188,10 +270,6 @@ crime_events_minigame := class(creative_device):
             crimeSpot5.Enable()
         else if(RandomCrimeIndex = 6):
             crimeSpot6.Enable()
-        else if(RandomCrimeIndex = 7):
-            crimeSpot7.Enable()
-        else:
-            crimeSpot8.Enable()
 
     # Resets all devices and starts over crime alert round
     ResetCrimeAlertRound() : void=
@@ -199,11 +277,25 @@ crime_events_minigame := class(creative_device):
         ResetGuards()
         spawn:
             StartCrimeAlertRound()
+    
+    ResetCollectibles() : void=
+        ctbl1.Hide()
+        ctbl2.Hide()
+        ctbl3.Hide()
+        ctbl4.Hide()
+        ctbl5.Hide()
+        ctbl6.Hide()
+        ctbl7.Hide()
+
 
     # Despawns guards & resets the appropriate guard spawner
     ResetGuards() : void=
         set NGuardsRemaining = MaxGuards
-        if(RandomCrimeIndex = 1):
+        if(IsBankCrime = true):
+            crimeSpotBank.Disable()
+            crimeSpotBank.Reset()
+            ResetCollectibles()
+        else if(RandomCrimeIndex = 1):
             crimeSpot1.Disable()
             crimeSpot1.Reset()
         else if(RandomCrimeIndex = 2):
@@ -221,12 +313,6 @@ crime_events_minigame := class(creative_device):
         else if(RandomCrimeIndex = 6):
             crimeSpot6.Disable()
             crimeSpot6.Reset()
-        else if(RandomCrimeIndex = 7):
-            crimeSpot7.Disable()
-            crimeSpot7.Reset()
-        else:
-            crimeSpot8.Disable()
-            crimeSpot8.Reset()
 
     # NPC Battle Simulation Script
 
